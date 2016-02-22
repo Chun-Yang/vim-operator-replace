@@ -4,33 +4,25 @@
 " Exec: !::exe [echo 'NOT AUTOSOURCED']
 
 " Mappings
-nnoremap <expr> <Plug>ReplaceOperator   <SID>setOpfunc('replace')
-nnoremap <expr> <Plug>ExchangeOperator  <SID>setOpfunc('exchange')
-
-vnoremap <Plug>ReplaceOperator  :<C-u>call <SID>replaceOpfunc(visualmode())<CR>
-vnoremap <Plug>ExchangeOperator :<C-u>call <SID>exchangeOpfunc(visualmode())<CR>
+nnoremap <silent> <Plug>ReplaceOperator :set opfunc=<SID>replaceOperatorFunction<CR>g@
+vnoremap <silent> <Plug>ReplaceOperator :<C-u>call <SID>replaceOperatorFunction(visualmode())<CR>
+nnoremap <silent> <Plug>ReplaceOperatorWithLastReplaced :set opfunc=<SID>replaceOperatorWithLastReplacedFunction<CR>g@
+vnoremap <silent> <Plug>ReplaceOperatorWithLastReplaced :<C-u>call <SID>replaceOperatorWithLastReplacedFunction(visualmode())<CR>
 
 " Public: s:replace() wrappers
-fu! s:replaceOpfunc (motion)
-    let type     = get(a:, 'motion')
-    let register = get(g:, 'replace_register', '_')
-    call s:replace(type, register)
+fu! s:replaceOperatorFunction (motion)
+    call s:replace(a:motion, '*')
 endfu
 
-fu! s:exchangeOpfunc (motion)
-    let type     = get(a:, 'motion')
-    call s:replace(type, '|')
-endfu
-
-" Private: setup opfunc when called from normal-mode
-function! s:setOpfunc (name)
-    exe 'set opfunc=<SNR>'.s:SID().'_'.a:name.'Opfunc'
-    return 'g@'
+fu! s:replaceOperatorWithLastReplacedFunction (motion)
+    " by default - register is used to save inline-deleted content
+    call s:replace(a:motion, '-')
 endfu
 
 " Private: replace operation
-function! s:replace (type, register)
-    let type = get(a:, 'type')
+function! s:replace (type, register_from)
+    let type          = get(a:, 'type')
+    let register_from = get(a:, 'register_from')
 
     if     type==#'char' | let expr = "`[v`]"
     elseif type==#'line' | let expr = "'[v']"
@@ -38,30 +30,20 @@ function! s:replace (type, register)
     elseif type==#'V'    | let expr = "'<V'>"
     else | return | end
 
-    let delreg = get(a:, 'register', '_')
-    let putreg = v:register
-
-    if delreg==#'|'
-        let delreg = putreg             | end
-    if delreg==#putreg
-        let newval = getreg(putreg, 1)  | end
-
     exe 'normal! '.expr
-    exe 'normal! "'.delreg.'d'
 
-    if delreg==#putreg
-        let oldval = getreg(delreg, 1)
-        call setreg(putreg, newval)     | end
+    " by default, " register will be changed, we do not want that happen
+    let unnamed_register_original = getreg('"')
+    let delete_register_original  = getreg('-')
+    " by by default deleted content is saved to " register
+    exe 'normal! ""d'
+    " normally, we save deleted content to - register
+    " if we want to use the content of the
+    let delete_register_new = register_from ==# '-' ?
+        \ delete_register_original :
+        \ getreg('"')
+    call setreg('-', delete_register_new)
+    call setreg('"', unnamed_register_original)
 
-    exe 'normal! "'.putreg.'P'
-
-    if delreg==#putreg
-        call setreg(putreg, oldval)     | end
-
-    "echo 'R:'.delreg.putreg.'='.oldval
+    exe 'normal! "'.register_from.'P'
 endfu
-
-fu! s:SID()
-    return matchstr(expand('<sfile>'),'<SNR>\zs\d\+\ze_SID$')
-endfu
-
